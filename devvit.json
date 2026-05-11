@@ -1,0 +1,27 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "flairguard-app",
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.js"
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "FlairGuard: View Recent Actions",
+        "description": "See the last 5 automatic actions taken by FlairGuard",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/view-logs"
+      }
+    ]
+  },
+  "triggers": {
+    "onAppInstall": "/internal/on-app-install",
+    "onPostFlairUpdate": "/internal/triggers/post-flair"
+  },
+  "scripts": {
+    "dev": "node --experimental-strip-types ./tools/build.ts --watch",
+    "build": "node --experimental-strip-types ./tools/build.ts --minify"
+  }
+}
