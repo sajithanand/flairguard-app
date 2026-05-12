@@ -14,8 +14,9 @@ import {
 
 // ─── Redis key helpers ────────────────────────────────────────────────────────
 
-const RULES_KEY = "flairguard:rules";
-const LOG_KEY   = "flairguard:log";
+const RULES_KEY         = "flairguard:rules";
+const LOG_KEY           = "flairguard:log";
+const SETTINGS_POST_KEY = "flairguard:settings_post_id";
 const MAX_LOG   = 50; // keep last 50 actions
 
 // ─── Request router ───────────────────────────────────────────────────────────
@@ -290,6 +291,23 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
 // ─── Menu: Open Settings Dashboard ───────────────────────────────────────────────
 
 async function onMenuOpenSettings(): Promise<UiResponse> {
+  // Check if we already have an active settings post
+  const existingPostId = await redis.get(SETTINGS_POST_KEY);
+  if (existingPostId) {
+    try {
+      const existingPost = await reddit.getPostById(existingPostId);
+      if (existingPost && existingPost.url) {
+        return {
+          showToast: { text: "⚙️ Opening FlairGuard settings...", appearance: "success" },
+          navigateTo: existingPost.url,
+        };
+      }
+    } catch (e) {
+      // Post might have been deleted, continue to create a new one
+      console.log(`[FlairGuard] Existing settings post not found, creating a new one.`);
+    }
+  }
+
   // To render a custom HTML WebView in Devvit, we must spawn a Custom Post
   // This post serves as our "Settings Dashboard" interface for mods.
   try {
@@ -298,6 +316,10 @@ async function onMenuOpenSettings(): Promise<UiResponse> {
       subredditName: context.subredditName ?? "",
       preview: { entrypoint: "default" },
     });
+    
+    // Store the ID so we can reuse it next time
+    await redis.set(SETTINGS_POST_KEY, post.id);
+
     return {
       showToast: { text: "⚙️ Opening FlairGuard settings...", appearance: "success" },
       navigateTo: post.url,
