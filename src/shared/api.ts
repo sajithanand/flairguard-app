@@ -4,8 +4,10 @@
 
 /** A single flair-to-action mapping configured by a moderator */
 export type FlairRule = {
-  /** Exact flair text to match (case-insensitive) */
+  /** Exact flair text to match (case-insensitive) or regex pattern */
   flairText: string;
+  /** Whether flairText should be treated as a Regular Expression */
+  isRegex: boolean;
   /** Human-readable removal reason posted as a sticky comment */
   removalReason: string;
   /** Whether to remove the post automatically */
@@ -14,6 +16,8 @@ export type FlairRule = {
   lockThread: boolean;
   /** Whether to notify modmail when this rule fires */
   notifyModmail: boolean;
+  /** Number of days to temporarily ban the user (0 means no ban) */
+  banDurationDays?: number;
 };
 
 /** Stored entry in the action log */
@@ -53,16 +57,17 @@ export type SaveRulesRequest = {
 
 export const ApiEndpoint = {
   // Trigger endpoints (called by Devvit runtime)
-  OnAppInstall:    "/internal/on-app-install",
-  OnPostFlair:     "/internal/triggers/post-flair",
+  OnAppInstall:       "/internal/on-app-install",
+  OnPostFlair:        "/internal/triggers/post-flair",
 
   // Menu action endpoints
-  OnMenuViewLogs:  "/internal/menu/view-logs",
+  OnMenuOpenSettings: "/internal/menu/open-settings",
+  OnMenuViewLogs:     "/internal/menu/view-logs",
 
   // UI API endpoints (called by the webview dashboard)
-  GetRules:        "/api/get-rules",
-  SaveRules:       "/api/save-rules",
-  GetLogs:         "/api/get-logs",
+  GetRules:           "/api/get-rules",
+  SaveRules:          "/api/save-rules",
+  GetLogs:            "/api/get-logs",
 } as const;
 
 export type ApiEndpoint = (typeof ApiEndpoint)[keyof typeof ApiEndpoint];

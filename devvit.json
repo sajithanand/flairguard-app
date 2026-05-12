@@ -5,11 +5,27 @@
     "dir": "dist/server",
     "entry": "index.js"
   },
+  "post": {
+    "dir": "public",
+    "entrypoints": {
+      "default": {
+        "inline": false,
+        "entry": "settings.html"
+      }
+    }
+  },
   "menu": {
     "items": [
       {
-        "label": "FlairGuard: View Recent Actions",
-        "description": "See the last 5 automatic actions taken by FlairGuard",
+        "label": "⚙️ FlairGuard: Configure Rules",
+        "description": "Add or edit flair-to-removal-action mappings for this subreddit",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/open-settings"
+      },
+      {
+        "label": "📋 FlairGuard: View Recent Actions",
+        "description": "See the last actions taken automatically by FlairGuard",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/view-logs"
@@ -23,5 +39,8 @@
   "scripts": {
     "dev": "node --experimental-strip-types ./tools/build.ts --watch",
     "build": "node --experimental-strip-types ./tools/build.ts --minify"
+  },
+  "dev": {
+    "subreddit": "flairguard_app_dev"
   }
 }

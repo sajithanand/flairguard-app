@@ -50,6 +50,10 @@ async function onRequest(
       break;
 
     // ── Mod menu endpoints ────────────────────────────────────────────────────
+    case ApiEndpoint.OnMenuOpenSettings:
+      writeJSON(200, await onMenuOpenSettings(), rsp);
+      break;
+
     case ApiEndpoint.OnMenuViewLogs:
       writeJSON(200, await onMenuViewLogs(), rsp);
       break;
@@ -75,31 +79,54 @@ async function onRequest(
 // ─── Trigger: App Install ─────────────────────────────────────────────────────
 
 async function onAppInstall(): Promise<TriggerResponse> {
-  // Seed with sensible default rules so mods have a starting point
   const existing = await redis.get(RULES_KEY);
   if (!existing) {
     const defaults: FlairRule[] = [
       {
         flairText: "Rule 1 - Spam",
+        isRegex: false,
         removalReason:
           "Your post has been removed because it violates **Rule 1 — No Spam**.\n\n" +
           "Please review the community rules before posting again.",
         removePost: true,
         lockThread: false,
         notifyModmail: false,
+        banDurationDays: 0,
       },
       {
         flairText: "Rule 2 - Off Topic",
+        isRegex: false,
         removalReason:
           "Your post has been removed because it is **off-topic** for this community.\n\n" +
           "Please check the sidebar for what types of posts are allowed.",
         removePost: true,
         lockThread: false,
         notifyModmail: false,
+        banDurationDays: 0,
       },
     ];
     await redis.set(RULES_KEY, JSON.stringify(defaults));
     console.log("[FlairGuard] Installed with default rules.");
+
+    // Send a welcome modmail to guide the mod team
+    try {
+      await reddit.sendPrivateMessageAsSubreddit({
+        subredditName: context.subredditName ?? "",
+        username: context.userId ?? "",
+        subject: "🛡️ FlairGuard is installed — here’s how to set it up",
+        text:
+          "## Welcome to FlairGuard!\n\n" +
+          "FlairGuard automatically removes posts and posts removal reasons when you apply a removal flair.\n\n" +
+          "**Default rules loaded:**\n" +
+          "- `Rule 1 - Spam` → auto-removes post + posts removal reason\n" +
+          "- `Rule 2 - Off Topic` → auto-removes post + posts removal reason\n\n" +
+          "**To configure your own rules:** Go to your subreddit mod menu and click **⚙️ FlairGuard: Configure Rules**.\n\n" +
+          "*Powered by the Reddit Developer Platform.*",
+      });
+    } catch (e) {
+      // Modmail on install is nice-to-have, don’t fail install if it errors
+      console.warn(`[FlairGuard] Could not send welcome modmail: ${e}`);
+    }
   }
   return {};
 }
@@ -125,19 +152,38 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
     return {};
   }
 
+  // ── Deduplication: skip if we already handled this exact post+flair recently ─
+  const dedupKey = `flairguard:dedup:${postId}:${flairText.replace(/\s+/g, "_")}`;
+  const alreadyHandled = await redis.get(dedupKey);
+  if (alreadyHandled) {
+    console.log(`[FlairGuard] Already handled post ${postId} for flair "${flairText}" — skipping duplicate.`);
+    return {};
+  }
+  // Mark as handled for 120 seconds to absorb any repeated triggers
+  await redis.set(dedupKey, "1");
+  await redis.expire(dedupKey, 120);
+
   console.log(`[FlairGuard] Flair "${flairText}" applied to post ${postId}`);
 
   // Load rules from Redis
   const rulesRaw = await redis.get(RULES_KEY);
   const rules: FlairRule[] = rulesRaw ? JSON.parse(rulesRaw) : [];
 
-  // Find matching rule — normalize dashes and case for robust matching
+  // Find matching rule — check regex first, then exact match
   const normalize = (s: string) =>
     s.toLowerCase().replace(/[–—]/g, "-").trim();
 
-  const rule = rules.find(
-    (r) => normalize(r.flairText) === normalize(flairText)
-  );
+  const rule = rules.find((r) => {
+    if (r.isRegex) {
+      try {
+        const regex = new RegExp(r.flairText, 'i');
+        return regex.test(flairText);
+      } catch (e) {
+        return false;
+      }
+    }
+    return normalize(r.flairText) === normalize(flairText);
+  });
 
   if (!rule) {
     console.log(`[FlairGuard] No rule configured for flair "${flairText}" — skipping.`);
@@ -157,14 +203,14 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
     }
   }
 
-  // ── 2. Post a sticky removal reason comment ──────────────────────────────
+  // ── 2. Post removal reason comment ──────────────────────────────────────
   try {
     const comment = await reddit.submitComment({
       id: postId,
-      text: buildRemovalComment(rule.removalReason, flairText),
+      text: buildRemovalComment(rule.removalReason, flairText, postTitle, authorName),
     });
-    // Distinguish (pin) the comment as a moderator comment
-    await reddit.distinguish(comment.id, true);
+    // Note: reddit.distinguish() is not available in Devvit Web SDK
+    // The comment still appears clearly as posted by the app account
     actionsTaken.push("commented");
     console.log(`[FlairGuard] Removal comment posted: ${comment.id}`);
   } catch (e) {
@@ -182,7 +228,48 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
     }
   }
 
-  // ── 4. Log the action ────────────────────────────────────────────────────
+  // ── 4. Notify via modmail ─────────────────────────────────────────────────
+  if (rule.notifyModmail) {
+    try {
+      const postUrl = `https://reddit.com/r/${context.subredditName ?? ""}/comments/${postId.replace("t3_", "")}`;
+      await reddit.sendPrivateMessageAsSubreddit({
+        subredditName: context.subredditName ?? "",
+        username: authorName,
+        subject: `[FlairGuard] Post removed — ${flairText}`,
+        text:
+          `Your post **"${postTitle}"** in r/${context.subredditName ?? ""} has been removed.\n\n` +
+          `**Reason:** ${rule.removalReason}\n\n` +
+          `**Post link:** ${postUrl}\n\n` +
+          `---\n*This message was sent automatically by FlairGuard. ` +
+          `If you believe this was a mistake, please [contact the moderators](https://www.reddit.com/message/compose?to=%2Fr%2F${encodeURIComponent(context.subredditName ?? "")}).*`,
+      });
+      actionsTaken.push("modmail");
+      console.log(`[FlairGuard] Modmail sent to u/${authorName}.`);
+    } catch (e) {
+      console.error(`[FlairGuard] Failed to send modmail: ${e}`);
+    }
+  }
+
+  // ── 5. Auto-Ban ──────────────────────────────────────────────────────────
+  if (rule.banDurationDays && rule.banDurationDays > 0) {
+    try {
+      await reddit.banUser({
+        subredditName: context.subredditName ?? "",
+        username: authorName,
+        duration: rule.banDurationDays,
+        message: `You have been temporarily banned for violating community rules.\n\nReason: ${rule.removalReason}`,
+        reason: `FlairGuard automated ban: ${flairText}`,
+      });
+      actionsTaken.push(`banned(${rule.banDurationDays}d)`);
+      console.log(`[FlairGuard] Banned u/${authorName} for ${rule.banDurationDays} days.`);
+    } catch (e) {
+      console.error(`[FlairGuard] Failed to ban user: ${e}`);
+    }
+  }
+
+  // ── 6. Log the action ────────────────────────────────────────────────────
+
+
   try {
     await appendLog({
       timestamp: Date.now(),
@@ -200,21 +287,55 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
   return {};
 }
 
+// ─── Menu: Open Settings Dashboard ───────────────────────────────────────────────
+
+async function onMenuOpenSettings(): Promise<UiResponse> {
+  // To render a custom HTML WebView in Devvit, we must spawn a Custom Post
+  // This post serves as our "Settings Dashboard" interface for mods.
+  try {
+    const post = await reddit.submitCustomPost({
+      title: "⚙️ FlairGuard — Rules Dashboard (Mods Only)",
+      subredditName: context.subredditName ?? "",
+      preview: { entrypoint: "default" },
+    });
+    return {
+      showToast: { text: "⚙️ Opening FlairGuard settings...", appearance: "success" },
+      navigateTo: post.url,
+    };
+  } catch (e) {
+    console.error(`[FlairGuard] Failed to spawn settings post: ${e}`);
+    return {
+      showToast: { text: "❌ Failed to open settings. Check permissions.", appearance: "error" },
+    };
+  }
+}
+
 // ─── Menu: View Recent Logs ───────────────────────────────────────────────────
 
 async function onMenuViewLogs(): Promise<UiResponse> {
   const entries = await readLog();
   if (entries.length === 0) {
-    return { showToast: { text: "FlairGuard: No actions logged yet.", appearance: "neutral" } };
+    return {
+      showToast: { text: "📋 FlairGuard: No actions logged yet. Apply a removal flair to get started!", appearance: "neutral" },
+    };
   }
-  const lines = entries
-    .slice(0, 5)
-    .map(
-      (e) =>
-        `• "${e.flairText}" on "${e.postTitle.slice(0, 40)}" by u/${e.authorName}`
-    )
+
+  const fmt = (ts: number) => new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const recent = entries.slice(0, 5);
+  const lines = recent
+    .map((e) => {
+      const actions = e.actionsTaken.join("+");
+      const title = e.postTitle.length > 35 ? e.postTitle.slice(0, 35) + "…" : e.postTitle;
+      return `[${fmt(e.timestamp)}] ${actions} • "${title}" → ${e.flairText}`;
+    })
     .join("\n");
-  return { showToast: { text: `Recent FlairGuard Actions:\n${lines}`, appearance: "success" } };
+
+  return {
+    showToast: {
+      text: `🛡️ FlairGuard — Last ${recent.length} actions:\n${lines}`,
+      appearance: "success",
+    },
+  };
 }
 
 // ─── API: Get Rules ───────────────────────────────────────────────────────────
@@ -243,13 +364,38 @@ async function getLogs(): Promise<GetLogsResponse> {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildRemovalComment(reason: string, flairText: string): string {
+function interpolateTemplate(
+  template: string,
+  vars: { author: string; subreddit: string; title: string; flair: string }
+): string {
+  return template
+    .replace(/\{\{author\}\}/g, vars.author)
+    .replace(/\{\{subreddit\}\}/g, vars.subreddit)
+    .replace(/\{\{title\}\}/g, vars.title)
+    .replace(/\{\{flair\}\}/g, vars.flair);
+}
+
+function buildRemovalComment(
+  reason: string,
+  flairText: string,
+  postTitle: string,
+  authorName: string,
+): string {
+  const subreddit = context.subredditName ?? "";
+  // Replace template variables in the removal reason
+  const interpolated = interpolateTemplate(reason, {
+    author: authorName,
+    subreddit,
+    title: postTitle,
+    flair: flairText,
+  });
   return (
     `**[Removed by FlairGuard — ${flairText}]**\n\n` +
-    `${reason}\n\n` +
-    `---\n*This action was performed automatically. If you believe this was a mistake, please [message the moderators](https://www.reddit.com/message/compose?to=%2Fr%2F${encodeURIComponent(context.subredditName ?? "")}).*`
+    `${interpolated}\n\n` +
+    `---\n*This action was performed automatically. If you believe this was a mistake, please [message the moderators](https://www.reddit.com/message/compose?to=%2Fr%2F${encodeURIComponent(subreddit)}).*`
   );
 }
+
 
 async function appendLog(entry: ActionLogEntry): Promise<void> {
   const existing = await readLog();
