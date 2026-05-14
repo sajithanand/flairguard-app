@@ -1,356 +1,89 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FlairGuard — Configure Rules</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f1117;
-      color: #e8e8e8;
-      min-height: 100vh;
-      padding: 20px;
-    }
-
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 24px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid #2a2a3a;
-    }
-
-    .logo { font-size: 28px; }
-
-    .header h1 {
-      font-size: 20px;
-      font-weight: 700;
-      color: #ff4500;
-    }
-
-    .header p {
-      font-size: 12px;
-      color: #888;
-      margin-top: 2px;
-    }
-
-    .status-bar {
-      background: #1a1f2e;
-      border: 1px solid #2a2a3a;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 20px;
-      font-size: 13px;
-      color: #aaa;
-    }
-
-    .status-bar.success { border-color: #22c55e; color: #22c55e; background: #0f2318; }
-    .status-bar.error   { border-color: #ef4444; color: #ef4444; background: #2a0f0f; }
-
-    .rules-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-
-    .rule-card {
-      background: #1a1f2e;
-      border: 1px solid #2a2a3a;
-      border-radius: 10px;
-      padding: 16px;
-      transition: border-color 0.2s;
-    }
-
-    .rule-card:hover { border-color: #ff4500; }
-
-    .rule-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-
-    .rule-number {
-      font-size: 11px;
-      font-weight: 600;
-      color: #ff4500;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .delete-btn {
-      background: none;
-      border: 1px solid #ef4444;
-      color: #ef4444;
-      border-radius: 6px;
-      padding: 4px 10px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .delete-btn:hover { background: #ef4444; color: white; }
-
-    label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: #aaa;
-      margin-bottom: 5px;
-      margin-top: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-    }
-
-    input[type="text"], textarea {
-      width: 100%;
-      background: #0f1117;
-      border: 1px solid #2a2a3a;
-      border-radius: 6px;
-      color: #e8e8e8;
-      padding: 9px 12px;
-      font-size: 13px;
-      font-family: inherit;
-      transition: border-color 0.2s;
-      resize: vertical;
-    }
-
-    input[type="text"]:focus, textarea:focus {
-      outline: none;
-      border-color: #ff4500;
-    }
-
-    textarea { min-height: 70px; }
-
-    .toggle-row {
-      display: flex;
-      gap: 16px;
-      margin-top: 12px;
-      flex-wrap: wrap;
-    }
-
-    .toggle-label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      font-size: 13px;
-      color: #ccc;
-      margin-top: 0;
-      text-transform: none;
-      letter-spacing: 0;
-      font-weight: 400;
-    }
-
-    input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      accent-color: #ff4500;
-      cursor: pointer;
-    }
-
-    .btn-row {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .btn {
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      transition: all 0.2s;
-    }
-
-    .btn-primary {
-      background: #ff4500;
-      color: white;
-      flex: 1;
-    }
-    .btn-primary:hover { background: #e03d00; transform: translateY(-1px); }
-    .btn-primary:disabled { background: #555; cursor: not-allowed; transform: none; }
-
-    .btn-secondary {
-      background: #1a1f2e;
-      color: #aaa;
-      border: 1px solid #2a2a3a;
-    }
-    .btn-secondary:hover { border-color: #ff4500; color: #ff4500; }
-
-    .empty-state {
-      text-align: center;
-      padding: 40px 20px;
-      color: #555;
-      font-size: 14px;
-    }
-
-    .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
-
-    .loading { text-align: center; padding: 40px; color: #555; }
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlairGuard Configuration</title>
+  <link rel="stylesheet" href="settings.css">
 </head>
 <body>
   <div class="header">
-    <div class="logo">🛡️</div>
+    <div class="logo" id="header-logo">🛡️</div>
     <div>
       <h1>FlairGuard</h1>
-      <p>Configure flair-to-action rules for this subreddit</p>
+      <p>Configure flair-to-action rules</p>
+    </div>
+    <div class="status-badge">
+      <span class="status-dot"></span> ACTIVE
     </div>
   </div>
 
-  <div id="status" class="status-bar" style="display:none"></div>
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="stat-value" id="stat-rules">0</div>
+      <div class="stat-label">Active Rules</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value" id="stat-actions">0</div>
+      <div class="stat-label">Total Actions</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value">100%</div>
+      <div class="stat-label">Uptime</div>
+    </div>
+  </div>
 
+  <div class="tabs">
+    <div class="tab active" id="tab-rules">⚙️ Configure Rules</div>
+    <div class="tab" id="tab-logs">📜 Action Logs</div>
+    <div class="tab" id="tab-status">📢 Community Status</div>
+  </div>
+
+  <div id="status" class="status-bar hidden"></div>
   <div id="loading" class="loading">Loading rules...</div>
 
-  <div id="rules-container" style="display:none">
-    <div id="rules-list" class="rules-list"></div>
-
-    <div class="btn-row" style="margin-bottom: 20px;">
-      <button class="btn btn-secondary" onclick="addRule()">＋ Add Rule</button>
-    </div>
-
-    <div class="btn-row">
-      <button id="save-btn" class="btn btn-primary" onclick="saveRules()">💾 Save All Rules</button>
+  <div id="rules-container" class="hidden">
+    <div id="rules-list"></div>
+    <div class="btn-group">
+      <button class="btn btn-secondary" id="add-rule-btn">＋ Add Rule</button>
+      <button id="save-btn" class="btn btn-primary">💾 Save All Rules</button>
     </div>
   </div>
 
-  <script>
-    // Devvit Web client communication
-    async function fetchFromServer(endpoint, body) {
-      const resp = await fetch(endpoint, {
-        method: body ? 'POST' : 'GET',
-        headers: body ? { 'Content-Type': 'application/json' } : {},
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      return resp.json();
-    }
+  <div id="logs-container" class="hidden">
+    <input type="text" id="logSearch" class="search-bar" placeholder="Search logs by username, flair, or action...">
+    <table class="logs-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>User</th>
+          <th>Post Title</th>
+          <th>Flair</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="logs-tbody"></tbody>
+    </table>
+    <div id="logs-loading" class="loading hidden">Loading logs...</div>
+    <div class="align-right">
+      <button id="clear-logs-btn" class="btn btn-danger small-btn">🗑️ Clear All Logs</button>
+    </div>
+  </div>
 
-    let rules = [];
+  <div id="status-container" class="hidden">
+    <div class="rule-card">
+      <h3>📢 Update Community Status Post</h3>
+      <p class="helper-text">
+        Type a message below to update the stickied announcement post at the top of your subreddit.
+      </p>
+      <label>Announcement Text (Markdown supported)</label>
+      <textarea id="status-text" class="tall-textarea" placeholder="e.g. Welcome to r/flairguardtest! Check out our new rules..."></textarea>
+      <div class="margin-top-20">
+        <button id="save-status-btn" class="btn btn-primary">🚀 Update Community Post</button>
+      </div>
+    </div>
+  </div>
 
-    async function loadRules() {
-      try {
-        const data = await fetchFromServer('/api/get-rules');
-        rules = data.rules || [];
-        renderRules();
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('rules-container').style.display = 'block';
-      } catch (e) {
-        showStatus('Failed to load rules: ' + e.message, 'error');
-        document.getElementById('loading').textContent = 'Failed to load rules.';
-      }
-    }
-
-    function renderRules() {
-      const list = document.getElementById('rules-list');
-      if (rules.length === 0) {
-        list.innerHTML = `<div class="empty-state"><div class="icon">📋</div>No rules yet. Click "＋ Add Rule" to create your first one.</div>`;
-        return;
-      }
-      list.innerHTML = rules.map((r, i) => `
-        <div class="rule-card" id="rule-${i}">
-          <div class="rule-card-header">
-            <span class="rule-number">Rule ${i + 1}</span>
-            <button class="delete-btn" onclick="deleteRule(${i})">🗑 Remove</button>
-          </div>
-
-          <div style="display:flex; justify-content:space-between; align-items:flex-end;">
-            <label style="margin-bottom:0;">Flair Text</label>
-            <label class="toggle-label" style="font-size:11px; margin-top:0;">
-              <input type="checkbox" id="regex-${i}" ${r.isRegex ? 'checked' : ''} style="width:12px; height:12px;" /> Treat as Regex
-            </label>
-          </div>
-          <input type="text" id="flair-${i}" value="${escHtml(r.flairText)}" placeholder="e.g. Rule 1 - Spam" style="margin-top:5px;" />
-
-          <label>Removal Reason Message (supports Markdown)</label>
-          <textarea id="reason-${i}" placeholder="Your post was removed because...">${escHtml(r.removalReason)}</textarea>
-          <div style="font-size:11px;color:#555;margin-top:4px;">
-            💡 Template variables: <code style="color:#ff4500">{{author}}</code> <code style="color:#ff4500">{{subreddit}}</code> <code style="color:#ff4500">{{title}}</code> <code style="color:#ff4500">{{flair}}</code>
-          </div>
-
-
-          <div class="toggle-row" style="margin-top:16px;">
-            <label class="toggle-label">
-              <input type="checkbox" id="remove-${i}" ${r.removePost ? 'checked' : ''} />
-              Auto-remove post
-            </label>
-            <label class="toggle-label">
-              <input type="checkbox" id="lock-${i}" ${r.lockThread ? 'checked' : ''} />
-              Lock thread
-            </label>
-            <label class="toggle-label">
-              <input type="checkbox" id="modmail-${i}" ${r.notifyModmail ? 'checked' : ''} />
-              Notify modmail
-            </label>
-          </div>
-          
-          <div style="margin-top:12px; display:flex; align-items:center; gap:8px;">
-            <label style="margin:0;">Auto-Ban (Days):</label>
-            <input type="number" id="ban-${i}" value="${r.banDurationDays || 0}" min="0" max="999" style="width:70px; background:#0f1117; border:1px solid #2a2a3a; border-radius:6px; color:#e8e8e8; padding:5px 8px; font-size:13px;" />
-            <span style="font-size:11px; color:#888;">0 means no ban</span>
-          </div>
-        </div>
-      `).join('');
-    }
-
-    function addRule() {
-      rules.push({ flairText: '', isRegex: false, removalReason: '', removePost: true, lockThread: false, notifyModmail: false, banDurationDays: 0 });
-      renderRules();
-      // Scroll to new rule
-      const lastCard = document.querySelector('.rule-card:last-child');
-      lastCard?.scrollIntoView({ behavior: 'smooth' });
-      document.getElementById(`flair-${rules.length - 1}`)?.focus();
-    }
-
-    function deleteRule(i) {
-      rules.splice(i, 1);
-      renderRules();
-    }
-
-    function collectRules() {
-      return rules.map((_, i) => ({
-        flairText:       document.getElementById(`flair-${i}`).value.trim(),
-        isRegex:         document.getElementById(`regex-${i}`).checked,
-        removalReason:   document.getElementById(`reason-${i}`).value.trim(),
-        removePost:      document.getElementById(`remove-${i}`).checked,
-        lockThread:      document.getElementById(`lock-${i}`).checked,
-        notifyModmail:   document.getElementById(`modmail-${i}`).checked,
-        banDurationDays: parseInt(document.getElementById(`ban-${i}`).value, 10) || 0,
-      })).filter(r => r.flairText); // skip blank rules
-    }
-
-    async function saveRules() {
-      const btn = document.getElementById('save-btn');
-      btn.disabled = true;
-      btn.textContent = 'Saving...';
-      try {
-        const collected = collectRules();
-        await fetchFromServer('/api/save-rules', { rules: collected });
-        rules = collected;
-        renderRules();
-        showStatus(`✅ Saved ${collected.length} rule${collected.length !== 1 ? 's' : ''} successfully!`, 'success');
-      } catch (e) {
-        showStatus('❌ Save failed: ' + e.message, 'error');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '💾 Save All Rules';
-      }
-    }
-
-    function showStatus(msg, type) {
-      const el = document.getElementById('status');
-      el.textContent = msg;
-      el.className = 'status-bar ' + (type || '');
-      el.style.display = 'block';
-      if (type === 'success') setTimeout(() => { el.style.display = 'none'; }, 4000);
-    }
-
-    function escHtml(str) {
-      return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
-
-    loadRules();
-  </script>
+  <script src="settings.js"></script>
 </body>
 </html>

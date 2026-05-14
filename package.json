@@ -17,11 +17,12 @@
   },
   "dependencies": {
     "@devvit/web": "0.12.22",
-    "devvit": "0.12.22"
+    "devvit": "0.12.22",
+    "playwright": "^1.60.0"
   },
   "devDependencies": {
     "@types/node": "22.12.0",
-    "typescript": "5.9.3",
-    "esbuild": "0.27.2"
+    "esbuild": "0.27.2",
+    "typescript": "5.9.3"
   }
 }

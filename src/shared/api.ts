@@ -68,6 +68,8 @@ export const ApiEndpoint = {
   GetRules:           "/api/get-rules",
   SaveRules:          "/api/save-rules",
   GetLogs:            "/api/get-logs",
+  SaveStatus:         "/api/save-status",
+  ClearLogs:          "/api/clear-logs",
 } as const;
 
 export type ApiEndpoint = (typeof ApiEndpoint)[keyof typeof ApiEndpoint];

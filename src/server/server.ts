@@ -12,12 +12,13 @@ import {
   type SaveRulesResponse,
 } from "../shared/api.ts";
 
-// ─── Redis key helpers ────────────────────────────────────────────────────────
+// ─── Redis key helpers ────────────────────────────────────────────────────────    
 
-const RULES_KEY         = "flairguard:rules";
-const LOG_KEY           = "flairguard:log";
-const SETTINGS_POST_KEY = "flairguard:settings_post_id";
-const MAX_LOG   = 50; // keep last 50 actions
+const RULES_KEY = "flairguard:rules";
+const LOG_KEY = "flairguard:log";
+const SETTINGS_POST_KEY = "flairguard:settings_post_id_v2";
+const STATUS_POST_KEY = "flairguard:status_post_id";
+const MAX_LOG = 500; // keep last 500 actions
 
 // ─── Request router ───────────────────────────────────────────────────────────
 
@@ -38,9 +39,25 @@ async function onRequest(
   req: IncomingMessage,
   rsp: ServerResponse,
 ): Promise<void> {
-  const endpoint = (req.url ?? "") as ApiEndpoint;
+  // Use robust URL parsing to handle both relative and absolute URLs
+  const urlStr = req.url ?? "";
+  let endpoint: string;
+  try {
+    // If it's a full URL, extract the pathname. If not, treat as relative.
+    const parsed = new URL(urlStr, "http://localhost");
+    endpoint = parsed.pathname;
+  } catch (e) {
+    endpoint = urlStr.split("?")[0] ?? "";
+  }
+  
+  // Clean up trailing slash
+  if (endpoint.endsWith("/") && endpoint.length > 1) {
+    endpoint = endpoint.slice(0, -1);
+  }
 
-  switch (endpoint) {
+  console.log(`[BACKEND] Request: ${endpoint} (Original: ${urlStr})`);
+
+  switch (endpoint as ApiEndpoint) {
     // ── Devvit trigger endpoints ──────────────────────────────────────────────
     case ApiEndpoint.OnAppInstall:
       writeJSON(200, await onAppInstall(), rsp);
@@ -70,6 +87,15 @@ async function onRequest(
 
     case ApiEndpoint.GetLogs:
       writeJSON(200, await getLogs(), rsp);
+      break;
+
+    case ApiEndpoint.SaveStatus:
+      writeJSON(200, await saveStatus(req), rsp);
+      break;
+
+    case ApiEndpoint.ClearLogs:
+      await redis.del(LOG_KEY);
+      writeJSON(200, { ok: true }, rsp);
       break;
 
     default:
@@ -112,8 +138,8 @@ async function onAppInstall(): Promise<TriggerResponse> {
     // Send a welcome modmail to guide the mod team
     try {
       await reddit.sendPrivateMessageAsSubreddit({
-        subredditName: context.subredditName ?? "",
-        username: context.userId ?? "",
+        fromSubredditName: context.subredditName ?? "",
+        to: context.userId ?? "",
         subject: "🛡️ FlairGuard is installed — here’s how to set it up",
         text:
           "## Welcome to FlairGuard!\n\n" +
@@ -128,6 +154,19 @@ async function onAppInstall(): Promise<TriggerResponse> {
       // Modmail on install is nice-to-have, don’t fail install if it errors
       console.warn(`[FlairGuard] Could not send welcome modmail: ${e}`);
     }
+
+    // Automatically spawn the settings post so the user doesn't have to find the mod menu!
+    try {
+      const post = await reddit.submitCustomPost({
+        title: "⚙️ FlairGuard — Rules Dashboard (Mods Only)",
+        subredditName: context.subredditName ?? "",
+        entry: "default",
+      });
+      await redis.set(SETTINGS_POST_KEY, post.id);
+      console.log(`[FlairGuard] Automatically generated settings post: ${post.url}`);
+    } catch (e) {
+      console.error(`[FlairGuard] Failed to auto-generate settings post:`, e);
+    }
   }
   return {};
 }
@@ -135,7 +174,7 @@ async function onAppInstall(): Promise<TriggerResponse> {
 // ─── Trigger: Post Flair Updated ─────────────────────────────────────────────
 
 async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
-  const body = await readJSON<Record<string, unknown>>(req).catch(() => ({}));
+  const body = await readJSON<any>(req).catch(() => ({}));
 
   // Confirmed Devvit Web PostFlairUpdate shape:
   // body.post.id, body.post.linkFlair.text, body.post.title, body.author.name
@@ -196,7 +235,7 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
   // ── 1. Remove the post ───────────────────────────────────────────────────
   if (rule.removePost) {
     try {
-      await reddit.remove(postId, false);
+      await reddit.remove(postId as `t3_${string}`, false);
       actionsTaken.push("removed");
       console.log(`[FlairGuard] Post ${postId} removed.`);
     } catch (e) {
@@ -207,7 +246,7 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
   // ── 2. Post removal reason comment ──────────────────────────────────────
   try {
     const comment = await reddit.submitComment({
-      id: postId,
+      id: postId as `t3_${string}`,
       text: buildRemovalComment(rule.removalReason, flairText, postTitle, authorName),
     });
     // Note: reddit.distinguish() is not available in Devvit Web SDK
@@ -221,7 +260,8 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
   // ── 3. Lock the thread ───────────────────────────────────────────────────
   if (rule.lockThread) {
     try {
-      await reddit.lock(postId);
+      const postToLock = await reddit.getPostById(postId as `t3_${string}`);
+      await postToLock.lock();
       actionsTaken.push("locked");
       console.log(`[FlairGuard] Post ${postId} locked.`);
     } catch (e) {
@@ -234,8 +274,8 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
     try {
       const postUrl = `https://reddit.com/r/${context.subredditName ?? ""}/comments/${postId.replace("t3_", "")}`;
       await reddit.sendPrivateMessageAsSubreddit({
-        subredditName: context.subredditName ?? "",
-        username: authorName,
+        fromSubredditName: context.subredditName ?? "",
+        to: authorName,
         subject: `[FlairGuard] Post removed — ${flairText}`,
         text:
           `Your post **"${postTitle}"** in r/${context.subredditName ?? ""} has been removed.\n\n` +
@@ -268,9 +308,11 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
     }
   }
 
+
+
+  console.log(`[FlairGuard] Done. Actions taken: ${actionsTaken.join(", ")}`);
+
   // ── 6. Log the action ────────────────────────────────────────────────────
-
-
   try {
     await appendLog({
       timestamp: Date.now(),
@@ -284,7 +326,6 @@ async function onPostFlair(req: IncomingMessage): Promise<TriggerResponse> {
     console.error(`[FlairGuard] Failed to log action: ${e}`);
   }
 
-  console.log(`[FlairGuard] Done. Actions taken: ${actionsTaken.join(", ")}`);
   return {};
 }
 
@@ -295,7 +336,7 @@ async function onMenuOpenSettings(): Promise<UiResponse> {
   const existingPostId = await redis.get(SETTINGS_POST_KEY);
   if (existingPostId) {
     try {
-      const existingPost = await reddit.getPostById(existingPostId);
+      const existingPost = await reddit.getPostById(existingPostId as `t3_${string}`);
       if (existingPost && existingPost.url) {
         return {
           showToast: { text: "⚙️ Opening FlairGuard settings...", appearance: "success" },
@@ -314,9 +355,9 @@ async function onMenuOpenSettings(): Promise<UiResponse> {
     const post = await reddit.submitCustomPost({
       title: "⚙️ FlairGuard — Rules Dashboard (Mods Only)",
       subredditName: context.subredditName ?? "",
-      preview: { entrypoint: "default" },
+      entry: "default",
     });
-    
+
     // Store the ID so we can reuse it next time
     await redis.set(SETTINGS_POST_KEY, post.id);
 
@@ -327,7 +368,7 @@ async function onMenuOpenSettings(): Promise<UiResponse> {
   } catch (e) {
     console.error(`[FlairGuard] Failed to spawn settings post: ${e}`);
     return {
-      showToast: { text: "❌ Failed to open settings. Check permissions.", appearance: "error" },
+      showToast: { text: "❌ Failed to open settings. Check permissions." },
     };
   }
 }
@@ -363,9 +404,16 @@ async function onMenuViewLogs(): Promise<UiResponse> {
 // ─── API: Get Rules ───────────────────────────────────────────────────────────
 
 async function getRules(): Promise<GetRulesResponse> {
-  const raw = await redis.get(RULES_KEY);
-  const rules: FlairRule[] = raw ? JSON.parse(raw) : [];
-  return { type: "getRules", rules };
+  console.log(`[BACKEND] getRules() started`);
+  try {
+    const raw = await redis.get(RULES_KEY);
+    console.log(`[BACKEND] getRules() redis returned:`, raw);
+    const rules: FlairRule[] = raw ? JSON.parse(raw) : [];
+    return { type: "getRules", rules };
+  } catch (e) {
+    console.error(`[BACKEND] getRules() threw error:`, e);
+    throw e;
+  }
 }
 
 // ─── API: Save Rules ──────────────────────────────────────────────────────────
@@ -377,11 +425,63 @@ async function saveRules(req: IncomingMessage): Promise<SaveRulesResponse> {
   return { type: "saveRules", ok: true };
 }
 
+async function saveStatus(req: IncomingMessage): Promise<any> {
+  const { text } = await readJSON<any>(req);
+  
+  let postId = await redis.get(STATUS_POST_KEY);
+  if (postId) {
+    try {
+      const post = await reddit.getPostById(postId as `t3_${string}`);
+      await post.edit({ text });
+      console.log(`[FlairGuard] Updated status post: ${postId}`);
+    } catch (e) {
+      console.error(`[FlairGuard] Failed to edit status post, creating new one:`, e);
+      postId = null;
+    }
+  }
+
+  if (!postId) {
+    const post = await reddit.submitCustomPost({
+      title: "📢 Community Status & Announcements",
+      subredditName: context.subredditName ?? "",
+      entry: "default", // We'll just use the same dashboard UI but it will show the status
+    });
+    // For a text post, we would use submitPost, but user asked for a status post.
+    // Let's use a standard text post for maximum visibility
+    const textPost = await reddit.submitPost({
+      title: "📢 Community Status & Announcements",
+      subredditName: context.subredditName ?? "",
+      text: text || "Welcome to our community! Status updates will appear here.",
+    });
+    await textPost.sticky();
+    postId = textPost.id;
+    await redis.set(STATUS_POST_KEY, postId);
+    console.log(`[FlairGuard] Created and stickied new status post: ${postId}`);
+  }
+
+  return { ok: true, postId };
+}
+
 // ─── API: Get Logs ────────────────────────────────────────────────────────────
 
+
+
 async function getLogs(): Promise<GetLogsResponse> {
-  const entries = await readLog();
-  return { type: "getLogs", entries };
+  return {
+    type: "getLogs",
+    entries: await readLog(),
+  };
+}
+
+async function appendLog(entry: ActionLogEntry): Promise<void> {
+  const existing = await readLog();
+  const updated = [entry, ...existing].slice(0, MAX_LOG);
+  await redis.set(LOG_KEY, JSON.stringify(updated));
+}
+
+async function readLog(): Promise<ActionLogEntry[]> {
+  const raw = await redis.get(LOG_KEY);
+  return raw ? JSON.parse(raw) : [];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -419,16 +519,7 @@ function buildRemovalComment(
 }
 
 
-async function appendLog(entry: ActionLogEntry): Promise<void> {
-  const existing = await readLog();
-  const updated = [entry, ...existing].slice(0, MAX_LOG);
-  await redis.set(LOG_KEY, JSON.stringify(updated));
-}
 
-async function readLog(): Promise<ActionLogEntry[]> {
-  const raw = await redis.get(LOG_KEY);
-  return raw ? JSON.parse(raw) : [];
-}
 
 function writeJSON<T>(status: number, json: T, rsp: ServerResponse): void {
   const body = JSON.stringify(json);
