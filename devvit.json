@@ -1,6 +1,7 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
   "name": "flairguard-app",
+
   "server": {
     "dir": "dist/server",
     "entry": "index.js"

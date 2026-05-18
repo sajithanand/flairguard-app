@@ -20,6 +20,44 @@ const SETTINGS_POST_KEY = "flairguard:settings_post_id_v2";
 const STATUS_POST_KEY = "flairguard:status_post_id";
 const MAX_LOG = 500; // keep last 500 actions
 
+// ─── Moderator permission check ───────────────────────────────────────────────
+
+/**
+ * Verifies that the currently authenticated user is a moderator of the
+ * subreddit this app is installed in. If not, writes a 403 response and
+ * returns false so the caller can bail out early.
+ */
+async function assertIsModerator(rsp: ServerResponse): Promise<boolean> {
+  try {
+    const currentUser = context.userId;
+    const subredditName = context.subredditName;
+
+    if (!currentUser || !subredditName) {
+      writeJSON(403, { error: "Forbidden: missing context", status: 403 }, rsp);
+      return false;
+    }
+
+    // Fetch the list of moderators for this subreddit
+    const modsListing = await reddit.getModerators({ subredditName });
+    const mods = modsListing ? modsListing.children : [];
+
+    // Check if current user ID is in the mod list
+    const isMod = mods.some((mod: { id: string }) => mod.id === currentUser);
+
+    if (!isMod) {
+      console.warn(`[FlairGuard] Non-mod user (${currentUser}) attempted to access mod endpoint.`);
+      writeJSON(403, { error: "Forbidden: moderators only", status: 403 }, rsp);
+      return false;
+    }
+
+    return true;
+  } catch (e) {
+    console.error(`[FlairGuard] Mod permission check failed: ${e}`);
+    writeJSON(403, { error: "Forbidden: could not verify moderator status", status: 403 }, rsp);
+    return false;
+  }
+}
+
 // ─── Request router ───────────────────────────────────────────────────────────
 
 export async function serverOnRequest(
@@ -76,12 +114,14 @@ async function onRequest(
       writeJSON(200, await onMenuViewLogs(), rsp);
       break;
 
-    // ── Dashboard API endpoints ───────────────────────────────────────────────
+    // ── Dashboard API endpoints (moderator-only) ──────────────────────────────
     case ApiEndpoint.GetRules:
+      if (!await assertIsModerator(rsp)) return;
       writeJSON(200, await getRules(), rsp);
       break;
 
     case ApiEndpoint.SaveRules:
+      if (!await assertIsModerator(rsp)) return;
       writeJSON(200, await saveRules(req), rsp);
       break;
 
@@ -436,16 +476,11 @@ async function saveStatus(req: IncomingMessage): Promise<any> {
       console.log(`[FlairGuard] Updated status post: ${postId}`);
     } catch (e) {
       console.error(`[FlairGuard] Failed to edit status post, creating new one:`, e);
-      postId = null;
+      postId = undefined;
     }
   }
 
   if (!postId) {
-    const post = await reddit.submitCustomPost({
-      title: "📢 Community Status & Announcements",
-      subredditName: context.subredditName ?? "",
-      entry: "default", // We'll just use the same dashboard UI but it will show the status
-    });
     // For a text post, we would use submitPost, but user asked for a status post.
     // Let's use a standard text post for maximum visibility
     const textPost = await reddit.submitPost({
