@@ -168,3 +168,45 @@ textarea { height: 80px; resize: vertical; }
 }
 .success { background-color: #46d160; color: #fff; }
 .error { background-color: #ff4500; color: #fff; }
+
+/* Access Denied Styles */
+#access-denied {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 100px);
+  padding: 40px 20px;
+}
+.access-denied-card {
+  background: #1a1a1b;
+  border: 1px solid #ff450033;
+  border-radius: 8px;
+  padding: 45px 30px;
+  text-align: center;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+.access-denied-icon {
+  font-size: 54px;
+  margin-bottom: 24px;
+  filter: drop-shadow(0 0 10px rgba(255, 69, 0, 0.2));
+}
+.access-denied-card h2 {
+  color: #ff4500;
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 24px;
+  font-weight: 700;
+}
+.access-denied-card p {
+  color: #d7dadc;
+  font-size: 15px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.helper-text-denied {
+  color: #818384 !important;
+  font-size: 13px !important;
+  margin-top: 20px;
+}

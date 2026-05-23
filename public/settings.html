@@ -7,80 +7,94 @@
   <link rel="stylesheet" href="settings.css">
 </head>
 <body>
-  <div class="header">
-    <div class="logo" id="header-logo">🛡️</div>
-    <div>
-      <h1>FlairGuard</h1>
-      <p>Configure flair-to-action rules</p>
-    </div>
-    <div class="status-badge">
-      <span class="status-dot"></span> ACTIVE
-    </div>
-  </div>
-
-  <div class="stats-bar">
-    <div class="stat-item">
-      <div class="stat-value" id="stat-rules">0</div>
-      <div class="stat-label">Active Rules</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-value" id="stat-actions">0</div>
-      <div class="stat-label">Total Actions</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-value">100%</div>
-      <div class="stat-label">Uptime</div>
-    </div>
-  </div>
-
-  <div class="tabs">
-    <div class="tab active" id="tab-rules">⚙️ Configure Rules</div>
-    <div class="tab" id="tab-logs">📜 Action Logs</div>
-    <div class="tab" id="tab-status">📢 Community Status</div>
-  </div>
-
-  <div id="status" class="status-bar hidden"></div>
   <div id="loading" class="loading">Loading rules...</div>
 
-  <div id="rules-container" class="hidden">
-    <div id="rules-list"></div>
-    <div class="btn-group">
-      <button class="btn btn-secondary" id="add-rule-btn">＋ Add Rule</button>
-      <button id="save-btn" class="btn btn-primary">💾 Save All Rules</button>
-    </div>
-  </div>
-
-  <div id="logs-container" class="hidden">
-    <input type="text" id="logSearch" class="search-bar" placeholder="Search logs by username, flair, or action...">
-    <table class="logs-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>User</th>
-          <th>Post Title</th>
-          <th>Flair</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="logs-tbody"></tbody>
-    </table>
-    <div id="logs-loading" class="loading hidden">Loading logs...</div>
-    <div class="align-right">
-      <button id="clear-logs-btn" class="btn btn-danger small-btn">🗑️ Clear All Logs</button>
-    </div>
-  </div>
-
-  <div id="status-container" class="hidden">
-    <div class="rule-card">
-      <h3>📢 Update Community Status Post</h3>
-      <p class="helper-text">
-        Type a message below to update the stickied announcement post at the top of your subreddit.
-      </p>
-      <label>Announcement Text (Markdown supported)</label>
-      <textarea id="status-text" class="tall-textarea" placeholder="e.g. Welcome to r/flairguardtest! Check out our new rules..."></textarea>
-      <div class="margin-top-20">
-        <button id="save-status-btn" class="btn btn-primary">🚀 Update Community Post</button>
+  <!-- Dashboard UI (Moderators only) -->
+  <div id="dashboard-ui" class="hidden">
+    <div class="header">
+      <div class="logo" id="header-logo">🛡️</div>
+      <div>
+        <h1>FlairGuard</h1>
+        <p>Configure flair-to-action rules</p>
       </div>
+      <div class="status-badge">
+        <span class="status-dot"></span> ACTIVE
+      </div>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-value" id="stat-rules">0</div>
+        <div class="stat-label">Active Rules</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-actions">0</div>
+        <div class="stat-label">Total Actions</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">100%</div>
+        <div class="stat-label">Uptime</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" id="tab-rules">⚙️ Configure Rules</div>
+      <div class="tab" id="tab-logs">📜 Action Logs</div>
+      <div class="tab" id="tab-status">📢 Community Status</div>
+    </div>
+
+    <div id="status" class="status-bar hidden"></div>
+
+    <div id="rules-container" class="hidden">
+      <div id="rules-list"></div>
+      <div class="btn-group">
+        <button class="btn btn-secondary" id="add-rule-btn">＋ Add Rule</button>
+        <button id="save-btn" class="btn btn-primary">💾 Save All Rules</button>
+      </div>
+    </div>
+
+    <div id="logs-container" class="hidden">
+      <input type="text" id="logSearch" class="search-bar" placeholder="Search logs by username, flair, or action...">
+      <table class="logs-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>User</th>
+            <th>Post Title</th>
+            <th>Flair</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="logs-tbody"></tbody>
+      </table>
+      <div id="logs-loading" class="loading hidden">Loading logs...</div>
+      <div class="align-right">
+        <button id="clear-logs-btn" class="btn btn-danger small-btn">🗑️ Clear All Logs</button>
+      </div>
+    </div>
+
+    <div id="status-container" class="hidden">
+      <div class="rule-card">
+        <h3>📢 Update Community Status Post</h3>
+        <p class="helper-text">
+          Type a message below to update the stickied announcement post at the top of your subreddit.
+        </p>
+        <label>Announcement Text (Markdown supported)</label>
+        <textarea id="status-text" class="tall-textarea" placeholder="e.g. Welcome to r/flairguardtest! Check out our new rules..."></textarea>
+        <div class="margin-top-20">
+          <button id="save-status-btn" class="btn btn-primary">🚀 Update Community Post</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Access Denied (Non-moderators) -->
+  <div id="access-denied" class="hidden">
+    <div class="access-denied-card">
+      <div class="access-denied-icon">🔒</div>
+      <h2>Moderators Only</h2>
+      <p>This settings dashboard is restricted to subreddit moderators.</p>
+      <p class="helper-text-denied">Please contact the moderation team if you believe this is a mistake.</p>
     </div>
   </div>
 

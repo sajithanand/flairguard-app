@@ -27,25 +27,33 @@ const MAX_LOG = 500; // keep last 500 actions
  * subreddit this app is installed in. If not, writes a 403 response and
  * returns false so the caller can bail out early.
  */
-async function assertIsModerator(rsp: ServerResponse): Promise<boolean> {
+async function assertIsModerator(req: IncomingMessage, rsp: ServerResponse): Promise<boolean> {
   try {
-    const currentUser = context.userId;
+    const username = context.username ?? await reddit.getCurrentUsername();
     const subredditName = context.subredditName;
 
-    if (!currentUser || !subredditName) {
+    if (!username || !subredditName) {
       writeJSON(403, { error: "Forbidden: missing context", status: 403 }, rsp);
       return false;
     }
 
     // Fetch the list of moderators for this subreddit
+    // Fetch the list of moderators for this subreddit
     const modsListing = await reddit.getModerators({ subredditName });
-    const mods = modsListing ? modsListing.children : [];
+    const mods = modsListing && modsListing.children ? modsListing.children : [];
+    let isMod = mods.some((mod) => (mod.username || mod.name || "").toLowerCase() === username.toLowerCase());
 
-    // Check if current user ID is in the mod list
-    const isMod = mods.some((mod: { id: string }) => mod.id === currentUser);
+    // Fallback for local playtest/development when the simulator doesn't populate moderators
+    if (!isMod && mods.length === 0) {
+      const host = req.headers.host ?? "";
+      if (host.includes("127.0.0.1") || host.includes("localhost")) {
+        console.log(`[FlairGuard] Granting moderator access to ${username} because the simulator's moderator list is empty.`);
+        isMod = true;
+      }
+    }
 
     if (!isMod) {
-      console.warn(`[FlairGuard] Non-mod user (${currentUser}) attempted to access mod endpoint.`);
+      console.warn(`[FlairGuard] Non-mod user (u/${username}) attempted to access mod endpoint.`);
       writeJSON(403, { error: "Forbidden: moderators only", status: 403 }, rsp);
       return false;
     }
@@ -116,24 +124,27 @@ async function onRequest(
 
     // ── Dashboard API endpoints (moderator-only) ──────────────────────────────
     case ApiEndpoint.GetRules:
-      if (!await assertIsModerator(rsp)) return;
+      if (!await assertIsModerator(req, rsp)) return;
       writeJSON(200, await getRules(), rsp);
       break;
 
     case ApiEndpoint.SaveRules:
-      if (!await assertIsModerator(rsp)) return;
+      if (!await assertIsModerator(req, rsp)) return;
       writeJSON(200, await saveRules(req), rsp);
       break;
 
     case ApiEndpoint.GetLogs:
+      if (!await assertIsModerator(req, rsp)) return;
       writeJSON(200, await getLogs(), rsp);
       break;
 
     case ApiEndpoint.SaveStatus:
+      if (!await assertIsModerator(req, rsp)) return;
       writeJSON(200, await saveStatus(req), rsp);
       break;
 
     case ApiEndpoint.ClearLogs:
+      if (!await assertIsModerator(req, rsp)) return;
       await redis.del(LOG_KEY);
       writeJSON(200, { ok: true }, rsp);
       break;
