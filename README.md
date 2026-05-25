@@ -127,6 +127,16 @@ FlairGuard ports the classic **PRAW flair-action bot** pattern to native Devvit.
 
 ---
 
+## Moderator Permissions & Security
+
+To protect community settings and log data, FlairGuard enforces granular, role-based moderator checks:
+
+* **Subreddit Configuration (`config` or `all` permission)**: Only moderators with the `config` or `all` permission are allowed to access and edit FlairGuard rules (`GetRules`, `SaveRules`, `SaveStatus`) or clear audit logs (`ClearLogs`).
+* **Moderation Audit (`posts` or `all` permission)**: Viewing audit logs (`GetLogs`) or using the log dashboard requires the `posts`, `config`, or `all` moderator permissions.
+* **Menu Restriction**: Menu items are configured using `"forUserType": "moderator"`. The backend additionally verifies permission levels on every request to block unauthorized API access.
+
+---
+
 ## Project Status
 
 - ✅ Core flair trigger (confirmed live)

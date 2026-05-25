@@ -27,7 +27,17 @@ const MAX_LOG = 500; // keep last 500 actions
  * subreddit this app is installed in. If not, writes a 403 response and
  * returns false so the caller can bail out early.
  */
-async function assertIsModerator(req: IncomingMessage, rsp: ServerResponse): Promise<boolean> {
+/**
+ * Verifies that the currently authenticated user is a moderator of the
+ * subreddit this app is installed in and possesses the proper permissions
+ * ('config' or 'posts'). If not, writes a 403 response and returns false
+ * so the caller can bail out early.
+ */
+async function assertIsModerator(
+  req: IncomingMessage,
+  rsp: ServerResponse,
+  requiredPermission: "config" | "posts" = "config"
+): Promise<boolean> {
   try {
     const username = context.username ?? await reddit.getCurrentUsername();
     const subredditName = context.subredditName;
@@ -37,31 +47,64 @@ async function assertIsModerator(req: IncomingMessage, rsp: ServerResponse): Pro
       return false;
     }
 
-    // Fetch the list of moderators for this subreddit
-    // Fetch the list of moderators for this subreddit
-    const modsListing = await reddit.getModerators({ subredditName });
+    // Fetch the list of moderators for this subreddit matching the current user
+    const modsListing = await reddit.getModerators({ subredditName, username });
     const mods = modsListing && modsListing.children ? modsListing.children : [];
-    let isMod = mods.some((mod) => (mod.username || mod.name || "").toLowerCase() === username.toLowerCase());
+    const targetMod = mods.find(
+      (mod) => (mod.username || "").toLowerCase() === username.toLowerCase()
+    );
 
     // Fallback for local playtest/development when the simulator doesn't populate moderators
-    if (!isMod && mods.length === 0) {
+    if (!targetMod && mods.length === 0) {
       const host = req.headers.host ?? "";
       if (host.includes("127.0.0.1") || host.includes("localhost")) {
-        console.log(`[FlairGuard] Granting moderator access to ${username} because the simulator's moderator list is empty.`);
-        isMod = true;
+        console.log(
+          `[FlairGuard] Granting moderator config/posts access to ${username} because the simulator's moderator list is empty.`
+        );
+        return true;
       }
     }
 
-    if (!isMod) {
+    if (!targetMod) {
       console.warn(`[FlairGuard] Non-mod user (u/${username}) attempted to access mod endpoint.`);
       writeJSON(403, { error: "Forbidden: moderators only", status: 403 }, rsp);
+      return false;
+    }
+
+    // Retrieve the moderator permissions for this user
+    const permissions = await targetMod.getModPermissionsForSubreddit(subredditName);
+    
+    // Check if the user has 'all' permission or the specific required permission
+    const hasPermission =
+      permissions.includes("all") ||
+      permissions.includes(requiredPermission) ||
+      (requiredPermission === "posts" && permissions.includes("config")); // 'config' can view logs too
+
+    if (!hasPermission) {
+      console.warn(
+        `[FlairGuard] Moderator u/${username} lacks '${requiredPermission}' permission (permissions: ${permissions.join(
+          ", "
+        )}).`
+      );
+      writeJSON(
+        403,
+        {
+          error: `Forbidden: requires '${requiredPermission}' moderator permission`,
+          status: 403,
+        },
+        rsp
+      );
       return false;
     }
 
     return true;
   } catch (e) {
     console.error(`[FlairGuard] Mod permission check failed: ${e}`);
-    writeJSON(403, { error: "Forbidden: could not verify moderator status", status: 403 }, rsp);
+    writeJSON(
+      403,
+      { error: "Forbidden: could not verify moderator status or permissions", status: 403 },
+      rsp
+    );
     return false;
   }
 }
@@ -115,36 +158,38 @@ async function onRequest(
 
     // ── Mod menu endpoints ────────────────────────────────────────────────────
     case ApiEndpoint.OnMenuOpenSettings:
+      if (!await assertIsModerator(req, rsp, "config")) return;
       writeJSON(200, await onMenuOpenSettings(), rsp);
       break;
 
     case ApiEndpoint.OnMenuViewLogs:
+      if (!await assertIsModerator(req, rsp, "posts")) return;
       writeJSON(200, await onMenuViewLogs(), rsp);
       break;
 
     // ── Dashboard API endpoints (moderator-only) ──────────────────────────────
     case ApiEndpoint.GetRules:
-      if (!await assertIsModerator(req, rsp)) return;
+      if (!await assertIsModerator(req, rsp, "config")) return;
       writeJSON(200, await getRules(), rsp);
       break;
 
     case ApiEndpoint.SaveRules:
-      if (!await assertIsModerator(req, rsp)) return;
+      if (!await assertIsModerator(req, rsp, "config")) return;
       writeJSON(200, await saveRules(req), rsp);
       break;
 
     case ApiEndpoint.GetLogs:
-      if (!await assertIsModerator(req, rsp)) return;
+      if (!await assertIsModerator(req, rsp, "posts")) return;
       writeJSON(200, await getLogs(), rsp);
       break;
 
     case ApiEndpoint.SaveStatus:
-      if (!await assertIsModerator(req, rsp)) return;
+      if (!await assertIsModerator(req, rsp, "config")) return;
       writeJSON(200, await saveStatus(req), rsp);
       break;
 
     case ApiEndpoint.ClearLogs:
-      if (!await assertIsModerator(req, rsp)) return;
+      if (!await assertIsModerator(req, rsp, "config")) return;
       await redis.del(LOG_KEY);
       writeJSON(200, { ok: true }, rsp);
       break;
